@@ -1,0 +1,46 @@
+clc;
+clear all;
+syms tao a b s J x K y;
+num=[36.4]
+den=[1 36.24]
+zitad=0.9
+ts=100/1000
+T=10/1000
+Gc=tf(num,den)
+step(Gc)
+Gd=c2d(Gc,T)
+Id=tf([1],[1 -1],T)
+step(Gd)
+p=pole(Gd)
+z=zero(Gd)
+
+wnd=4/(zitad*ts)
+
+angz=wnd*sqrt(1-zitad^2)*T
+magz=exp(-T*zitad*wnd)
+zz=magz*cos(angz)+magz*sin(angz)*j
+
+PD=evalfr(Gd*Id,zz)
+
+ang1=rad2deg(atan2(imag(PD),real(PD)))
+num=180-ang1
+n=45
+n2=rad2deg(atan2(imag(zz),(real(zz)-p)))
+n3=180-n-n2
+M=sqrt(imag(zz)^2+(real(zz)-p)^2)
+x=(sin(deg2rad(n))*M)/sin(deg2rad(n3))
+
+beta=p-x
+
+eck1=tf([1 -p],[1 -beta],T,'variable','z')
+f=(eck1)^2
+eck2=(evalfr(Gd*Id*f,zz))
+K=double(solve(K*imag(eck2)^2+(K*real(eck2)^2)==1,K))
+
+
+syms z
+%u/e
+vpa((K*(z-p)^2)/((z-1)*(z-beta)^2),5)
+
+vpa(expand(vpa((K*(z-p)^2)/z^3,5)),5)%*e
+vpa(expand(vpa(((z-1)*(z-beta)^2)/z^3,5)),5)
