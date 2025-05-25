@@ -1,0 +1,47 @@
+clc;
+clear all;
+syms tao a b s J x K y;
+num=[36.4]
+den=[1 36.24]
+zitad=0.9
+ts=0.1
+T=0.006
+wnd=4/(ts*zitad)
+Gc=tf(num,den)
+Gd=c2d(Gc,T)
+
+G=[pole(Gd)]
+H=[1]
+C=[Gd.num{1}(2)]
+D=[0]
+
+syms K Ki Z
+
+Gast=vpa([G-K,Ki;
+    -C*G+C*K,-C*Ki+H],5)
+
+Zi=eye(2)*Z
+
+eck1=vpa(det(Zi-Gast),5)
+
+eck1_1=vpa(collect(eck1,Z),5)
+
+p1=-2*exp(-zitad*wnd*T)*cos(wnd*T*sqrt(1-zitad^2))
+p2=exp(-2*wnd*zitad*T)
+
+PD=vpa(Z^2+p1*Z+p2,5)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+expr_col = collect(eck1_1, Z);        % Agrupa por potencias de Z
+coefs = coeffs(expr_col, Z, 'All')  % Devuelve un vector con los coeficientes
+a = coefs(1)  % Coeficiente de Z^2
+b = coefs(2)  % Coeficiente de Z
+c = coefs(3)  % Término independiente
+
+eck2=b==p1
+eck3=c==p2
+
+[k,ki]=solve([eck2,eck3],[K,Ki])
+k=double(k)
+ki=double(ki)
