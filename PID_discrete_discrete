@@ -1,0 +1,185 @@
+%DEFINIMOS LA PLANTA
+% Parámetros de la función de transferencia
+%numerator = [14.67];%con angulo menor
+%denominator = [1 14.29];
+%numerator = [11.72];%original
+%denominator = [1 5.989];
+numerator = [36.4];%12-12
+denominator = [1 36.24];
+
+%VERIFICA CONTROLABILIDAD
+% Convertir a espacio de estados
+[A, B, C, D] = tf2ss(numerator, denominator);
+% Calcular la matriz de controlabilidad
+Co = ctrb(A, B);
+% Verificar si el sistema es completamente controlable
+controlabilidad = rank(Co);
+% Comprobar si el sistema es controlable
+if controlabilidad == size(A, 1)
+    disp('El sistema es completamente controlable');
+else
+    disp('El sistema no es completamente controlable');
+end
+
+%SIMULA UNA ENTRADA ESCALON
+% Crear la función de transferencia
+G = tf(numerator, denominator)
+tipo=0; %tipo de la planta
+% Simulación de la respuesta del sistema a una entrada escalón
+t = 0:0.01:10; % Tiempo de simulación
+[y, t] = step(G, t); % Respuesta al escalón
+% Graficar la respuesta
+figure;
+hold on
+plot(t, y, 'LineWidth', 2);
+grid on;
+title('Respuesta del sistema a una entrada escalón');
+xlabel('Tiempo (s)');
+ylabel('Salida (y(t))');
+% Encontrar el tiempo de establecimiento
+settling_time = stepinfo(G).SettlingTime;
+%settling_time = 1; %si no se estabiliza
+tm=0.006 %settling_time/100;
+%tm=0.4;
+
+%DISCRETIZAMOS LA PLANTA
+%discretizar la funcion de transferencia
+t = 0:tm:10; % Tiempo de simulación
+Gz=c2d(G,tm,'zoh') % discretiza la planta por retenedor de orden cero
+step(Gz,t) %compara las graficas, continuo vs discreto
+hold off
+%pasamos la funcion a terminos de atrazos
+%para ello dividimos en el mayor exponente de z
+%obtener numerador y denominador de la funcion
+numdisc=cell2mat(Gz.num);
+dendisc=cell2mat(Gz.den);
+numdisc1=cell2mat(Gz.num);
+dendisc1=cell2mat(Gz.den);
+% Obtener los coeficientes con mayor exponente de z
+numdisc = numdisc / dendisc(1);
+dendisc = dendisc / dendisc(1);
+% Crear la función de transferencia en términos de z^{-1}
+Gzatrasos = tf(numdisc, dendisc, tm, 'variable', 'z^-1')
+
+%SE CALCULA EL NUMERADOR Y DENOMIDADOR SIMBOLICO
+%se crea la funcion del controlador
+entrada_=1; %1 para escalon. 2 para rampa, 3 para parabola %%%%%%%%%%%%%%%%%%%%%%%%%% cambiar manualmente
+n=entrada_-tipo;
+dendiscatrasos=cell2mat(Gzatrasos.den);
+numdiscatrasos=cell2mat(Gzatrasos.num);
+max_exp_den = length(dendiscatrasos) - 1;
+max_exp_num = length(numdiscatrasos) - 1;
+syms z r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 s0 s1 s2 s3 s4 s5 s6 s7 s8 s9 x d0 d1 d2 d3 d4 d5 d6 n1 n2 n3 n4 n5 n6
+
+%       14.21 z^-1              ro+r1*z^(-1)
+%   ----------------------- * -----------------
+%     1 - 0.6762 z^-1            (1-z)^-1 
+% Calcular el numerador simbólico
+numpiddisc= sym('r0');
+numpiddisc = numpiddisc + sym(['r', num2str(1)]) * z^(-1);
+%numpiddisc = numpiddisc + sym(['r', num2str(2)]) * z^(-2);
+denpiddiscAUX = 1;
+%denpiddiscAUX = denpiddiscAUX + sym(['s', num2str(0)]) * z^(-1);%numpiddisc = numpiddisc + sym(['r', num2str(3)]) * z^(-3);
+% Calcular el denominador simbólico
+
+% denpiddiscAUX = denpiddiscAUX + sym(['s', num2str(1)]) * z^(-2);
+% denpiddiscAUX = denpiddiscAUX + sym(['s', num2str(2)]) * z^(-3);
+denpiddisc = expand((1 - z^-1)^n) * denpiddiscAUX;
+
+num1=sym(['n', num2str(1)])* z^(-1);
+%num1=num1+sym(['n', num2str(2)])* z^(-2);
+% num1=num1+sym(['n', num2str(3)])* z^(-3);
+den1=1;
+den1=den1+sym(['d', num2str(1)])* z^(-1);
+%den1=den1+sym(['d', num2str(2)])* z^(-2);
+% den1=den1+sym(['d', num2str(3)])* z^(-3);
+
+disp(denpiddisc);
+disp(numpiddisc);
+denpidfinal=expand(subs(denpiddisc, 1/z, x));
+denpidfinal2=collect(denpidfinal,x);
+
+%DEFINE PARAMETROS PARA EL CONTROLADOR
+%polinomio deseado
+zita=0.9;
+ts=settling_time*0.95;
+T=tm;
+%T=0.4;
+%Wn=4/(ts*(zita-sqrt(zita^2-1))) ;
+Wn=4/(zita*ts) ;
+
+%HALLA EL POLINOMIO DESEADO
+Gd=tf(Wn^2,[1 2*Wn Wn^2]) %f uncion de transferencia deseada en continuo
+Gdd=c2d(Gd,T) % funcion de transferencia deseada en continuo
+
+pold=cell2mat(Gdd.den);%num y den deseado
+% %es de 2 orden , toca agregarle 2 polos para llegar a z^-4
+%pold=conv(pold,[1 -0.1]);% 1er polo no dominante
+%pold=conv(pold,[1 -0.1])% 2do polo no dominante
+% pold=conv(pold,[1 -0.1])% 3do polo no dominante
+
+%SE REALIZAN LAS MULTIPLICACION DE LA PLANTA Y EL CONTROLADOR
+pd=den1*denpiddisc % DP*DC
+pd1=vpa(pd);
+pd2=expand(subs(pd1, 1/z, x))
+pdx=num1*numpiddisc % NP*NC
+pd1x=vpa(pdx);
+pd2x=expand(subs(pd1x, 1/z, x))
+
+pd3=collect(pd2,x) % agrupa en terminos de z^-n =x^n
+pd3x=collect(pd2x,x) % agrupa en terminos de z^-n =x^n
+[coeffs_pd3, terms_pd3] = coeffs(pd3, x);
+[coeffs_pd3x, terms_pd3x] = coeffs(pd3x, x);
+max=2;%depende del maximo Z
+z0=coeffs_pd3(max) +coeffs_pd3x(max)
+z1=coeffs_pd3(max-1)+coeffs_pd3x(max-1)
+%z2=coeffs_pd3(max-2)+coeffs_pd3x(max-2)
+%z3=coeffs_pd3(max-3)+coeffs_pd3x(max-3)
+% z4=coeffs_pd3(max-4)+coeffs_pd3x(max-4)
+% z5=coeffs_pd3(max-5)+coeffs_pd3x(max-5)
+% z6=coeffs_pd3(max-6)+coeffs_pd3x(max-6)
+% Extraer los coeficientes del numerador y denominador
+[num_coefs, den_coefs] = tfdata(Gzatrasos, 'v');
+d1=den_coefs(2);
+%d2=den_coefs(3);
+n1=num_coefs(2);
+%n2=num_coefs(3);
+
+%DEFICION DE LA MATRIZ A
+ % 1   r0     r1 
+A=[1    0     0    ;  %1
+   1*d1-1   n1     0;  %x
+   -1*d1    0     n1;]  %x2
+
+%CALCULO DE CONSTANTES S Y R
+pold=pold'
+s=A\pold
+%S0=s(2)
+R0=s(2)
+R1=s(3)
+%R2=s(4)
+%R3=s(5)
+%FORMA FINAL DEL CONTROLADOR
+% ro+r1*z^(-1)
+%-----------------------------------
+%        1 - 1
+
+
+%ECUACION EN DIFERENCIAS
+syms e ep epp eppp u up upp uppp ea Ua
+NUMdiff= vpa(R0+R1*z^(-1),4);
+%NUMdiff=subs(NUMdiff,z^(-3),eppp);
+%NUMdiff=subs(NUMdiff,z^(-2),epp);
+NUMdiff=subs(NUMdiff,z^(-1),ep);
+NUMdiff=vpa(subs(NUMdiff,vpa(R0,4),R0*ea),4);
+
+DENdiff= 1 - 1*z;
+%DENdiff=subs(DENdiff,z^3,uppp);
+%DENdiff=subs(DENdiff,z^2,upp);
+DENdiff=subs(DENdiff,z,up);
+DENdiff=subs(DENdiff,1,Ua);
+
+ec_en_diferencias=vpa(vpa(NUMdiff,4)==vpa(DENdiff,4),4)
+%ECUACION PARA MICROCONTROLADOR
+Ua_solve=vpa(solve(ec_en_diferencias,Ua),5)
+u=Ua_solve;
