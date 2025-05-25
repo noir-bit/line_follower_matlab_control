@@ -1,0 +1,93 @@
+% Limpieza inicial
+clc;
+clear all;
+close all;
+
+%% Parámetros del sistema
+num = [36.4];
+den = [1 36.24];
+TF = tf(num, den);
+
+%% Simulación de la respuesta al escalón
+t = 0:0.01:1; % Tiempo de simulación
+[y, t] = step(TF, t); % Respuesta al escalón
+
+% Graficar la respuesta
+figure;
+plot(t, y, 'LineWidth', 2);
+grid on;
+title('Respuesta del sistema a una entrada escalón');
+xlabel('Tiempo (s)');
+ylabel('Salida (y(t))');
+
+%% Diseño del controlador PI
+% Parámetros deseados
+zita = 0.9; % Coeficiente de amortiguamiento deseado
+settling_time = stepinfo(TF).SettlingTime
+ts = settling_time; % Tiempo de establecimiento deseado
+
+% Cálculo de frecuencia
+%wn = 4 / (ts * (zita - sqrt(zita^2 - 1)));
+wn = 4/(ts*zita)
+
+% Polinomio deseado (2do orden)
+syms s;
+PD = vpa(expand(s^2 + 2*zita*wn*s + wn^2),4)
+
+% Función de transferencia de la planta
+NP = 36.4;
+DP = (s + 36.24);
+
+% Controlador PI
+syms Kp Ki;
+NC = Kp*s + Ki
+DC = s
+
+% Ecuación característica del sistema en lazo cerrado
+PC = vpa(collect(expand(DC*DP + NC*NP)))
+
+% Coeficientes para igualar
+eq1 = coeffs(PC, s, 'All');
+eq2 = coeffs(PD, s, 'All');
+eqs = eq1 == eq2
+
+% Solución para las ganancias del controlador
+solutions = solve(eqs, [Kp, Ki]);
+Kp = double(vpa(solutions.Kp))
+Ki = double(vpa(solutions.Ki))
+syms z s
+%% Discretización del controlador
+Ts = 0.006; % Tiempo de muestreo
+TFcont = (Kp*s + Ki) / s
+
+% Método de Euler hacia atrás
+seuler = (z - 1) / (Ts * z);
+TFdis = subs(TFcont, s, seuler);
+TFdis = simplify(TFdis);
+
+% Obtener coeficientes discretos
+[num, den] = numden(TFdis);
+numdis = sym2poly(num);
+dendis = sym2poly(den);
+
+% Normalizar coeficientes
+numdis = sym2poly(num)
+dendis = sym2poly(den)
+
+% Función de transferencia discreta
+TFdiscrete = tf(numdis, dendis, Ts)
+
+numdis=double(vpa(numdis/dendis(1),4))
+dendis=double(vpa(dendis/dendis(1),4))
+
+%% Ecuación en diferencias
+syms e ep u up ea Ua;
+NUMdiff = vpa(numdis(1)*ea + numdis(2)*ep, 4);
+DENdiff = vpa(dendis(1)*Ua + dendis(2)*up, 4);
+
+ec_en_diferencias = vpa(NUMdiff == DENdiff, 4);
+
+% Ecuación para implementación en microcontrolador
+Ua_solve = vpa(solve(ec_en_diferencias, Ua), 5);
+u = Ua_solve
+
