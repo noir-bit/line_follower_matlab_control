@@ -1,0 +1,121 @@
+clc
+clear all
+%OSCILASCIONES MUERTAS
+%
+syms z T
+ESCALON=1/(1-z^(-1));
+RAMPA=(T*z^(-1))/(1-z^(-1))^2;
+PARABOLA=(((T^2)*z^(-1))*(1+z^(-1)))/(2*(1-z^(-1))^3);
+
+qescalon=0;
+qrampa=1;
+qparabola=2;
+
+numerator = [36.4];%12-12
+denominator = [1 36.24];
+% Crear la función de transferencia
+G = tf(numerator, denominator)
+z = zero(G)    % Zeros
+p = pole(G)    % Polos
+% Simulación de la respuesta del sistema a una entrada escalón
+t = 0:0.01:10; % Tiempo de simulación
+[y, t] = step(G, t); % Respuesta al escalón
+% Graficar la respuesta
+
+figure;
+hold on
+plot(t, y, 'LineWidth', 2);
+grid on;
+title('Respuesta del sistema a una entrada escalón');
+xlabel('Tiempo (s)');
+ylabel('Salida (y(t))');
+
+% Encontrar el tiempo de establecimiento
+settling_time = stepinfo(G).SettlingTime;
+tm=0.006;
+
+%discretizar la funcion de transferencia
+t = 0:tm:10; % Tiempo de simulación
+Gz=c2d(G,tm,'zoh') % discretiza la planta por retenedor de orden cero
+z = zero(Gz)    % Zeros
+p = pole(Gz)    % Polos
+step(Gz,t) %compara las graficas, continuo vs discreto
+hold off
+
+%pasamos la funcion a terminos de atrazos
+%para ello dividimos en el mayor exponente de z
+
+%obtener numerador y denominador de la funcion
+numdisc=cell2mat(Gz.num);
+dendisc=cell2mat(Gz.den);
+
+% Obtener los coeficientes con mayor exponente de z
+numdisc = numdisc / dendisc(1);
+dendisc = dendisc / dendisc(1);
+
+% Crear la función de transferencia en términos de z^{-1}
+Gzatrasos = tf(numdisc, dendisc, tm, 'variable', 'z^-1')
+T=tm
+Rz=ESCALON
+q=qescalon
+
+syms N n n0 n1 n2 n3 z a0 a1 a2 a3 a4 a5 x
+aux=((1-z^(-1))^(q+1))
+aux1=expand(subs(aux, 1/z, x))
+aux2=collect(aux1,x) % agrupa en terminos de z^-n =x^n 
+%
+%               1           1 - 0.9478 z^-1 
+% F(z) *  -----------   *   ---------------- = bo + b1 z^-1 
+%          (1-z^-1)          0.05323 z^-1 
+% 
+%       0.05323 z^-1 
+%     ----------------
+%     1 - 0.9478*z^-1
+%
+%         T*z^(-1)          1 - 0.9478 z^-1 
+% F(z) * -----------   *   ---------------- =bo + b1 z^-1
+%         (1-z^-1)^2          0.05323 z^-1 
+% 
+%(T*z^(-1))/(1-z^(-1))^2;
+Fz=a1*z^(-1)+a2*z^(-2) %w+a3*z^(-3)+a4*z^(-4)
+N= n0+n1*z^(-1)
+ec1= expand(1-Fz==aux*N)
+%solve(ec1, N)
+n0=1
+n1=0.8046
+a1=n0-n1
+a2=n1
+
+N= n0 +n1*z^(-1) %+n2*z^(-2)
+Fz=a1*z^(-1)+a2*z^(-2)
+
+num1=0.1963*z^-1
+den1=1 -  0.8046*z^-1
+
+Gdznum=vpa(expand((Fz* (den1))),4)
+Gdzden=vpa(expand((N*(num1)*((1-z^(-1))^(q+1)))),4)
+%numerador y denominador del controlador
+numosc=[0.1954 0.6474 -0.6474]
+denosc=[0.1963 -0.03836 -0.1579]
+% numosc=[0.0522 0.8983 -0.8983]
+% denosc=[0.05323 -0.002779 -0.05045]
+
+%ECUACION EN DIFERENCIAS
+syms e ep epp eppp u up upp uppp ea Ua
+NUMdiff= vpa(0.1954 + 0.6474*z^(-1)-0.6474*z^(-2),4);
+NUMdiff=subs(NUMdiff,z^(-3),eppp);
+NUMdiff=subs(NUMdiff,z^(-2),epp);
+NUMdiff=subs(NUMdiff,z^(-1),ep);
+NUMdiff=vpa(subs(NUMdiff,vpa(0.1954,4),0.1954*ea),4);
+
+DENdiff= 0.1963 - 0.03836*z^(-1) -0.1579*z^(-2);
+DENdiff=subs(DENdiff,z^(-3),uppp);
+DENdiff=subs(DENdiff,z^(-2),upp);
+DENdiff=subs(DENdiff,z^(-1),up);
+DENdiff=subs(DENdiff,0.1963,0.1963*Ua);
+
+ec_en_diferencias=vpa(vpa(NUMdiff,4)==vpa(DENdiff,4),4)
+%ECUACION PARA MICROCONTROLADOR
+Ua_solve=vpa(solve(ec_en_diferencias,Ua),5)
+u=Ua_solve;
+
